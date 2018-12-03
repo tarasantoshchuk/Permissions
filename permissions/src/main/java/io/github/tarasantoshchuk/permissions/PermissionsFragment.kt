@@ -41,11 +41,13 @@ class PermissionsFragment: Fragment() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         val requestResult = requestResults(permissions, grantResults)
 
-        permissionRequests[requestCode]!!.listener.apply {
+        val requestInfo = permissionRequests[requestCode]
+
+        requestInfo!!.listener.apply {
             when (requestResult.result) {
-                PermissionStatus.GRANTED -> onGranted(requestResult)
-                PermissionStatus.DENIED -> onDenied(requestResult)
-                PermissionStatus.DENIED_FOREVER -> onDeniedForever(requestResult)
+                PermissionStatus.GRANTED -> onGranted(requestInfo, requestResult)
+                PermissionStatus.DENIED -> onDenied(requestInfo, requestResult)
+                PermissionStatus.DENIED_FOREVER -> onDeniedForever(requestInfo, requestResult)
             }
         }
     }

@@ -38,57 +38,94 @@ class Permissions private constructor(fManagerProvider: () -> FragmentManager) {
         fManagerProvider()
     }
 
-    fun request(code: Int, skipRationale: Boolean = false) {
-        val requestInfo = permissionsHandler.permissionRequests[code]
+    fun executeRequest(code: Int, skipRationale: Boolean = false) {
+        val requestInfo = permissionsHandler.permissionRequests[code]!!
 
-        if (permissionsHandler.shouldShowRequestPermissionRationale(requestInfo!!.permissions) && !skipRationale) {
-            requestInfo.listener.onShowRationale(callback(code))
+        if (permissionsHandler.shouldShowRequestPermissionRationale(requestInfo.permissions) && !skipRationale) {
+            requestInfo.state = State.RATIONALE
+            requestInfo.listener.onShowRationale(requestInfo, callback(code))
+        } else {
+            requestInfo.state = State.SYSTEM_DIALOG
+            permissionsHandler.requestPermissions(requestInfo.permissions, code)
         }
-
-        permissionsHandler.requestPermissions(requestInfo.permissions, code)
     }
 
     private fun callback(code: Int): RequestCallback {
         return object : RequestCallback {
             override fun proceed() {
-                request(code, true)
+                executeRequest(code, true)
             }
 
             override fun cancel() {
+                abortRequest(code)
             }
         }
     }
 
-    fun registerRequest(code: Int, listener: RequestListener, vararg permissions: String) {
-        permissionsHandler.permissionRequests[code] = RequestInfo(permissions, listener)
+    private fun abortRequest(code: Int) {
+        permissionsHandler.permissionRequests[code]!!.state = State.IDLE
     }
 
-    fun requestNow(code: Int, listener: RequestListener, vararg permissions: String) {
-        registerRequest(code, listener, *permissions)
-        request(code)
+    fun registerRequest(code: Int, listener: RequestListener, vararg permissions: String) {
+        val requestInfo = permissionsHandler.permissionRequests[code]
+        if (requestInfo == null) {
+            permissionsHandler.permissionRequests[code] = RequestInfo(code, permissions, listener)
+        } else {
+            requestInfo.listener = listener
+
+            if (requestInfo.state == State.RATIONALE) {
+                listener.onShowRationale(requestInfo, callback(code))
+            }
+        }
+    }
+
+    fun registerAndExecuteRequest(code: Int, listener: RequestListener, vararg permissions: String) {
+        val requestInfo = permissionsHandler.permissionRequests[code]
+
+        if (requestInfo == null) {
+            permissionsHandler.permissionRequests[code] = RequestInfo(code, permissions, listener)
+            executeRequest(code)
+        } else {
+            requestInfo.listener = listener
+
+            if (requestInfo.state == State.RATIONALE) {
+                listener.onShowRationale(requestInfo, callback(code))
+            }
+        }
     }
 }
 
-class RequestInfo(val permissions: Array<out String>, val listener: RequestListener)
+enum class State {
+    IDLE,
+    RATIONALE,
+    SYSTEM_DIALOG,
+}
+
+class RequestInfo constructor(
+    val requestCode: Int,
+    val permissions: Array<out String>,
+    internal var listener: RequestListener,
+    internal var state: State = State.IDLE
+)
 
 interface RequestListener {
-    fun onShowRationale(callback: RequestCallback) {
+    fun onShowRationale(request: RequestInfo, callback: RequestCallback) {
         callback.proceed()
     }
 
-    fun onResult(result: RequestResult) {
+    fun onResult(request: RequestInfo, result: RequestResult) {
     }
 
-    fun onGranted(result: RequestResult) {
-        onResult(result)
+    fun onGranted(request: RequestInfo, result: RequestResult) {
+        onResult(request, result)
     }
 
-    fun onDenied(result: RequestResult) {
-        onResult(result)
+    fun onDenied(request: RequestInfo, result: RequestResult) {
+        onResult(request, result)
     }
 
-    fun onDeniedForever(result: RequestResult) {
-        onDenied(result)
+    fun onDeniedForever(request: RequestInfo, result: RequestResult) {
+        onDenied(request, result)
     }
 }
 
@@ -100,6 +137,7 @@ interface RequestCallback {
      *
      */
     fun proceed()
+
     fun cancel()
 }
 
